@@ -68,6 +68,7 @@
       .item .path{color:var(--muted);font-size:12.5px;word-break:break-all}
       .item .meta{font-size:13px;color:var(--muted);margin-top:3px}
       .item .err{font-size:13px;color:var(--bad);margin-top:3px;word-break:break-all}
+      .item .meta.warn{color:var(--warn)}
       .fmt{
         flex:none;font-size:12px;font-weight:800;letter-spacing:.06em;background:var(--chip);
         border-radius:6px;padding:5px 8px;margin-top:2px;
@@ -149,6 +150,7 @@
           <li><b>转换结果：</b>每个模型生成一个同名 .usdz，转好后点它右边的「下载」即可；也可以一键把全部结果打包成一个 ZIP 再下载。</li>
           <li><b>在 iPhone 上看：</b>把 .usdz 存到「文件」App，点开就能看 3D，点右上角 AR 图标可以把它摆进房间里，双指捏合缩放。</li>
           <li><b>贴图要和模型放在一起：</b>OBJ 的 .mtl 和贴图图片、glTF 的 .bin 和贴图，只要在同一个压缩包里（同文件夹或子文件夹都行），会自动配上。</li>
+          <li><b>按名字自动配贴图：</b>有些模型文件里根本没写贴图引用，这种就靠名字对上：贴图文件名里的部位词（自动去掉 Albedo、Texture 这类后缀和开头的角色名）会去对模型里的部件名，比如 Eye 对眼睛部件、Body 对身体、Jersey 对衣服；一个词对上多个部件会全都贴上。转完后每个模型下面会列出每张贴图贴到了哪个部件，没对上的也会明确写出来，不会悄悄丢掉。</li>
           <li><b>7z / RAR / TAR 也可以：</b>和 ZIP 一样直接选就行，在手机本地用 7-Zip 引擎解压，第一次会多等几秒加载引擎；但<b>设了密码的压缩包解不开</b>，请先在别处去掉密码再压。</li>
           <li><b>动画和骨骼不会保留：</b>USDZ 输出的是静态模型，FBX / glTF 里的骨骼动画转不了；模型本身的形状、材质颜色和贴图会保留。</li>
           <li><b>已经是 .usdz 的文件</b>会原样列出来，可直接下载，不重复转换。</li>
@@ -370,7 +372,7 @@ function rebuildJobs(){
     var e = fileMap[k], ex = extOf(e.path);
     if (!MODEL_EXTS[ex]) return;
     jobs.push({ id: ++jobSeq, path: e.path, name: baseOf(e.path), ext: ex,
-      status: ex === "usdz" ? "ready" : "wait", meta: "", err: "", blob: null, url: "", outName: stemOf(e.path) + ".usdz" });
+      status: ex === "usdz" ? "ready" : "wait", meta: "", err: "", texReport: [], blob: null, url: "", outName: stemOf(e.path) + ".usdz" });
   });
   render();
 }
@@ -425,6 +427,7 @@ function parseOBJ(text, dir, useTex){
     var key = matName || "__default";
     if (!meshes[key]){
       var m = newMesh("Part_" + (order.length+1));
+      m.matName = matName || "";
       if (matName && mats[matName]) m.mat = mats[matName];
       meshes[key] = m; order.push(key);
     }
@@ -694,6 +697,8 @@ function buildGLTF(gltf, buffers, imageData){
       else { for (i=0;i<count;i++) orderIdx.push(i); }
       var mesh = newMesh((nodeName || gmesh.name || "Mesh") + (pi>0 ? "_" + (pi+1) : ""));
       mesh.mat = materialFor(prim);
+      if (prim.material !== undefined && gltf.materials && gltf.materials[prim.material] && gltf.materials[prim.material].name)
+        mesh.matName = gltf.materials[prim.material].name;
       var cornerMap = [];
       for (i=0;i<orderIdx.length;i++){
         var vi = orderIdx[i];
@@ -774,7 +779,7 @@ function parseGLTFFile(entry, dir){
       if (!e) return Promise.resolve(null);
       return e.getArrayBuffer().then(function(ab){
         var ex = extOf(img.uri);
-        return { data: new Uint8Array(ab), mime: ex === "jpg" || ex === "jpeg" ? "image/jpeg" : "image/png", ext: ex === "jpg" || ex === "jpeg" ? "jpg" : "png" };
+        return { data: new Uint8Array(ab), mime: ex === "jpg" || ex === "jpeg" ? "image/jpeg" : "image/png", ext: ex === "jpg" || ex === "jpeg" ? "jpg" : "png", srcPath: e.path };
       });
     });
     return Promise.all(buffersP).then(function(buffers){
@@ -1300,6 +1305,132 @@ function buildUSDZ(model, opts){
   return zip.generateAsync({ type: "blob", compression: "STORE", mimeType: "model/vnd.usdz+zip" });
 }
 
+/* ============ 按名字对部位：贴图兜底匹配 ============
+   模型自己没写贴图引用（或引用对不上）时，拿贴图文件名里的部位词去对部件名/材质名。
+   例：CharlotteEyeAlbedo.png → 部位词 eye → 部件 Eyes、Eyesshade 都贴；
+       CharlotteJerseyPatchAlbedo.png → jersey / patch；…Body… → body → FinnyBody。
+   按引用已经贴上的部件和贴图不参与；结果逐条回报，对不上的明确提示。 */
+var TEX_STOPWORDS = { albedo:1, diffuse:1, basecolor:1, base:1, color:1, colour:1, texture:1,
+  tex:1, map:1, txtr:1, mesh:1, normal:1, roughness:1, metalness:1, specular:1, opacity:1,
+  alpha:1, occlusion:1, height:1, bump:1, img:1, image:1, pic:1, d:1, n:1, s:1 };
+var SYN_GROUPS = [
+  ["eye","eyes","eyeball","eyeballs","eyesshade","eyeshade","cornea","iris","pupil","sclera","eyelash","eyelashes","lash","lashes","eyebrow","brow"],
+  ["hair","mane","fringe","bangs","ponytail"],
+  ["body","torso","trunk","abdomen","belly"],
+  ["head","face","skull"],
+  ["skin","flesh","hide"],
+  ["tail"],
+  ["ear","ears"],
+  ["hand","hands","finger","fingers","thumb","glove","gloves"],
+  ["foot","feet","toe","toes","hoof","hooves","shoe","shoes","boot","boots","sandal","paw","paws"],
+  ["leg","legs","thigh","shin","calf","knee"],
+  ["arm","arms","shoulder","elbow","sleeve","sleeves"],
+  ["mouth","lip","lips","tongue","teeth","tooth","jaw"],
+  ["nose","nostril","snout","muzzle"],
+  ["horn","horns","antler","antlers"],
+  ["wing","wings","feather","feathers"],
+  ["penis","shaft","dick","cock","genital","genitals"],
+  ["jersey","shirt","sweater","jacket","coat","hoodie","dress","skirt","pants","trousers","shorts","cloth","clothes","clothing","outfit","uniform","top","vest","bra","underwear","swimsuit","bikini"],
+  ["breast","breasts","chest","boob","boobs","nipple"],
+  ["hip","hips","butt","buttocks","pelvis"],
+  ["neck","throat"],
+  ["beard","mustache","moustache"],
+  ["hat","cap","helmet","crown"]
+];
+var SYNONYMS = {}, PART_WORDS = { patch: 1 };
+SYN_GROUPS.forEach(function(g){ g.forEach(function(w){ SYNONYMS[w] = g; PART_WORDS[w] = 1; }); });
+function splitTokens(s){
+  return String(s)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(function(t){ return !!t; })
+    .map(function(t){ return t.toLowerCase().replace(/\d+$/, ""); })
+    .filter(function(t){ return !!t; });
+}
+function texKeyword(stem, modelTokens){
+  var toks = splitTokens(stem).filter(function(t){
+    return t.length >= 2 && !TEX_STOPWORDS[t] && modelTokens.indexOf(t) < 0;
+  });
+  /* 开头第一个词不是部位词、后面还有词时，多半是角色名/作者名前缀，去掉 */
+  if (toks.length >= 2 && !PART_WORDS[toks[0]]) toks.shift();
+  return { tokens: toks, joined: toks.join("") };
+}
+function nameMatches(kw, name){
+  if (!name) return false;
+  var n = String(name).toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!n) return false;
+  if (kw.joined && kw.joined.length >= 3 && (n.indexOf(kw.joined) >= 0 || (n.length >= 3 && kw.joined.indexOf(n) >= 0))) return true;
+  for (var i=0;i<kw.tokens.length;i++){
+    var t = kw.tokens[i];
+    if (t.length >= 3 && n.indexOf(t) >= 0) return true;
+    var g = SYNONYMS[t];
+    if (g){
+      for (var j=0;j<g.length;j++){
+        if (g[j].length >= 3 && n.indexOf(g[j]) >= 0) return true;
+      }
+    }
+  }
+  return false;
+}
+function applyNameMatchedTextures(model, job){
+  var report = [];
+  var usedPaths = {};
+  model.meshes.forEach(function(m){
+    if (m.mat && m.mat.map && m.mat.map.srcPath) usedPaths[m.mat.map.srcPath.toLowerCase()] = 1;
+  });
+  var needy = model.meshes.filter(function(m){ return !(m.mat && m.mat.map); });
+  if (!needy.length) return Promise.resolve(report);
+  var modelTokens = splitTokens(stemOf(job.name));
+  var cands = [], tgaFiles = [];
+  Object.keys(fileMap).forEach(function(k){
+    var e = fileMap[k], ex = extOf(e.path);
+    if (usedPaths[k]) return;
+    if (ex === "png" || ex === "jpg" || ex === "jpeg") cands.push(e);
+    else if (ex === "tga") tgaFiles.push(e);
+  });
+  if (!cands.length && !tgaFiles.length) return Promise.resolve(report);
+  var chain = Promise.resolve();
+  cands.forEach(function(e){
+    chain = chain.then(function(){
+      var fname = baseOf(e.path);
+      var kw = texKeyword(stemOf(fname), modelTokens);
+      if (!kw.tokens.length){
+        report.push({ ok: false, text: "贴图 " + fname + "：文件名里没认出部位词，未贴上" });
+        return null;
+      }
+      var matched = needy.filter(function(m){
+        return nameMatches(kw, m.name) || nameMatches(kw, m.matName || "");
+      });
+      if (!matched.length){
+        report.push({ ok: false, text: "贴图 " + fname + "（部位词：" + kw.tokens.join(" ") + "）：没对上任何部件，未贴上" });
+        return null;
+      }
+      var withUv = matched.filter(function(m){ return m.uv && m.uv.length === m.pos.length/3*2; });
+      if (!withUv.length){
+        report.push({ ok: false, text: "贴图 " + fname + "：对上了 " + matched.map(function(m){ return m.name; }).join("、") + "，但这些部件没有 UV 坐标，贴不上" });
+        return null;
+      }
+      return e.getArrayBuffer().then(function(ab){
+        var ex = extOf(e.path);
+        var map = { data: new Uint8Array(ab), mime: ex === "png" ? "image/png" : "image/jpeg",
+                    ext: ex === "png" ? "png" : "jpg", srcPath: e.path };
+        withUv.forEach(function(m){ m.mat.map = map; });
+        needy = needy.filter(function(m){ return withUv.indexOf(m) < 0; });
+        report.push({ ok: true, text: "贴图 " + fname + " → 部件 " + withUv.map(function(m){ return m.name; }).join("、") });
+      }).catch(function(){
+        report.push({ ok: false, text: "贴图 " + fname + "：读取失败，未贴上" });
+      });
+    });
+  });
+  return chain.then(function(){
+    tgaFiles.forEach(function(e){
+      report.push({ ok: false, text: "贴图 " + baseOf(e.path) + "：TGA 格式暂不支持自动贴图，未贴上" });
+    });
+    return report;
+  });
+}
+
 /* ============ 转换调度 ============ */
 function loadModel(job){
   var entry = fileMap[job.path.toLowerCase()];
@@ -1367,7 +1498,7 @@ function attachObjMaterials(model, text, dir, useTex){
       if (e){
         return e.getArrayBuffer().then(function(ab){
           var ex = extOf(mat.mapRef);
-          mesh.mat.map = { data: new Uint8Array(ab), mime: ex === "png" ? "image/png" : "image/jpeg",
+          mesh.mat.map = { data: new Uint8Array(ab), mime: ex === "png" ? "image/png" : "image/jpeg", srcPath: e.path,
                            ext: (ex === "png" || ex === "jpg" || ex === "jpeg") ? (ex === "jpeg" ? "jpg" : ex) : "png" };
         }).catch(function(){});
       }
@@ -1389,7 +1520,7 @@ function convertAll(){
   var chain = Promise.resolve();
   todo.forEach(function(job){
     chain = chain.then(function(){
-      job.status = "working"; job.err = ""; render();
+      job.status = "working"; job.err = ""; job.texReport = []; render();
       return yieldUI().then(function(){
         if (job.ext === "usdz"){
           var e = fileMap[job.path.toLowerCase()];
@@ -1403,7 +1534,12 @@ function convertAll(){
           var faces = countFaces(model), verts = countVerts(model);
           if (!faces) throw new Error("没解析出任何面，文件可能损坏或格式太特殊");
           var opts = { height: $("heightSel").value, ground: $("groundSel").value === "on", useTex: $("texSel").value === "on" };
-          return buildUSDZ(model, opts).then(function(blob){
+          job.texReport = [];
+          var prep = opts.useTex ? applyNameMatchedTextures(model, job) : Promise.resolve([]);
+          return prep.then(function(rep){
+            job.texReport = rep;
+            return buildUSDZ(model, opts);
+          }).then(function(blob){
             job.blob = blob;
             job.meta = verts.toLocaleString() + " 个顶点 · " + faces.toLocaleString() + " 个面 · 成品 " + fmtSize(blob.size);
           });
@@ -1475,6 +1611,11 @@ function render(){
       '<div class="name">' + escapeHtml(job.name) + '</div>' +
       '<div class="path">' + escapeHtml(job.path) + ' · ' + fmtSize(entry ? entry.size : 0) + '</div>';
     if (job.meta) inner += '<div class="meta">' + escapeHtml(job.meta) + '</div>';
+    if (job.texReport && job.texReport.length){
+      job.texReport.forEach(function(r){
+        inner += '<div class="meta' + (r.ok ? '' : ' warn') + '">' + escapeHtml(r.text) + '</div>';
+      });
+    }
     if (job.err) inner += '<div class="err">' + escapeHtml(job.err) + '</div>';
     inner += '</div>' + statusChip(job);
     div.innerHTML = inner;
