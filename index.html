@@ -1,0 +1,1547 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>ZIP模型一键转USDZ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) { min-height: 2.25rem; }
+      :root{
+        --bg:#f4f2ec; --panel:#fffdf8; --panel2:#efece3; --ink:#1d2420; --muted:#5d6a63;
+        --line:#ddd6c6; --accent:#0e6e5c; --accent-ink:#ffffff; --accent-soft:#e2efe9;
+        --ok:#177245; --bad:#b3372c; --warn:#9a6a12; --chip:#eceadf;
+        --shadow:0 10px 30px rgba(29,36,32,.10);
+      }
+      @media (prefers-color-scheme: dark){
+        :root{
+          --bg:#141816; --panel:#1e2421; --panel2:#262d29; --ink:#eceee9; --muted:#a7b3ab;
+          --line:#39423c; --accent:#2ea88c; --accent-ink:#0d1512; --accent-soft:#22352e;
+          --ok:#4cc084; --bad:#ef8a7d; --warn:#e0b45c; --chip:#2b332e;
+          --shadow:0 10px 30px rgba(0,0,0,.35);
+        }
+      }
+      *{box-sizing:border-box}
+      html,body{margin:0;padding:0}
+      body{
+        background:var(--bg); color:var(--ink);
+        font-family:"Avenir Next","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+        line-height:1.55; -webkit-font-smoothing:antialiased;
+      }
+      .wrap{max-width:880px;margin:0 auto;padding:20px 16px 56px}
+      h1{font-size:clamp(26px,5.4vw,38px);line-height:1.18;margin:6px 0 8px;font-weight:800;letter-spacing:.01em}
+      .lede{color:var(--muted);font-size:15.5px;margin:0 0 20px;max-width:62ch}
+      .lede b{color:var(--ink)}
+      .drop{
+        border:2px dashed var(--line); border-radius:14px; background:var(--panel);
+        padding:30px 18px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s;
+      }
+      .drop:hover,.drop.over{border-color:var(--accent); background:var(--accent-soft)}
+      .drop .big{font-size:19px;font-weight:700;margin:8px 0 4px}
+      .drop .small{color:var(--muted);font-size:13.5px}
+      .cube{width:46px;height:46px;margin:0 auto;color:var(--accent)}
+      .opts{
+        display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0 0;
+      }
+      @media (max-width:640px){.opts{grid-template-columns:1fr}}
+      .opt{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+      .opt label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:600}
+      .opt select{width:100%;font-size:15px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink)}
+      .bar{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 6px}
+      .btn{
+        appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+        font-size:15.5px;font-weight:700;border-radius:10px;padding:10px 18px;cursor:pointer;min-height:44px;
+      }
+      .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+      .btn:disabled{opacity:.45;cursor:not-allowed}
+      .btn:not(:disabled):active{transform:translateY(1px)}
+      .summary{color:var(--muted);font-size:14px;margin:8px 0 0;min-height:22px}
+      .list{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+      .item{
+        background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+        display:flex;gap:12px;align-items:flex-start;box-shadow:var(--shadow);
+      }
+      .item .main{flex:1;min-width:0}
+      .item .name{font-weight:700;font-size:15.5px;word-break:break-all}
+      .item .path{color:var(--muted);font-size:12.5px;word-break:break-all}
+      .item .meta{font-size:13px;color:var(--muted);margin-top:3px}
+      .item .err{font-size:13px;color:var(--bad);margin-top:3px;word-break:break-all}
+      .fmt{
+        flex:none;font-size:12px;font-weight:800;letter-spacing:.06em;background:var(--chip);
+        border-radius:6px;padding:5px 8px;margin-top:2px;
+      }
+      .st{flex:none;font-size:12.5px;font-weight:700;border-radius:999px;padding:5px 10px;margin-top:2px;background:var(--chip);color:var(--muted);white-space:nowrap}
+      .st.working{background:var(--accent-soft);color:var(--accent)}
+      .st.done{background:var(--accent-soft);color:var(--ok)}
+      .st.fail{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+      .dl{
+        flex:none;display:inline-block;margin-top:2px;background:var(--accent);color:var(--accent-ink);
+        text-decoration:none;font-weight:700;font-size:14px;border-radius:9px;padding:9px 14px;min-height:40px;
+      }
+      .prog{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;margin-top:16px;display:none}
+      .prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+      .notes{margin-top:30px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+      .notes h2{font-size:17px;margin:0 0 8px}
+      .notes ul{margin:0;padding-left:20px;color:var(--muted);font-size:14px}
+      .notes li{margin:4px 0}
+      .notes b{color:var(--ink)}
+      .hidden{display:none!important}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>ZIP 模型一键转 USDZ</h1>
+      <p class="lede">把装着 3D 模型的压缩包丢进来，自动解压、翻遍里面<b>所有文件夹</b>，把每个模型逐个转成 iPhone 能直接打开、用 AR 摆到桌上的 <b>.usdz</b> 文件。压缩包支持 <b>ZIP / 7z / RAR / TAR</b>，模型支持 <b>OBJ / STL / GLB / glTF / FBX / DAE / PLY</b>，带贴图的会把贴图一起打包进去。</p>
+
+      <div class="drop" id="drop" role="button" tabindex="0" aria-label="选择压缩包文件">
+        <svg class="cube" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true">
+          <path d="M24 4 42 13.5v21L24 44 6 34.5v-21L24 4Z"/>
+          <path d="M6 13.5 24 23l18-9.5M24 23v21"/>
+          <path d="M24 12v6M21 15.5h6" stroke-linecap="round"/>
+        </svg>
+        <div class="big">点这里选压缩包，或把文件拖进来</div>
+        <div class="small">ZIP、7z、RAR、TAR 都行，也可以直接选模型文件（可多选）。里面有几层文件夹、压缩包套压缩包都没关系。</div>
+      </div>
+      <!-- 不设 accept 限制：iOS 文件选择器会把不在 accept 列表里的文件置灰选不了（如 .7z），所以任何文件都可选，格式在选中后判断 -->
+      <input type="file" id="fileInput" class="hidden" multiple />
+
+      <div class="opts">
+        <div class="opt">
+          <label for="heightSel">模型高度</label>
+          <select id="heightSel">
+            <option value="keep" selected>保持原尺寸</option>
+            <option value="0.3">缩放到 30 厘米（桌面摆件）</option>
+            <option value="1">缩放到 1 米</option>
+            <option value="1.7">缩放到 1.7 米（真人大小）</option>
+          </select>
+        </div>
+        <div class="opt">
+          <label for="groundSel">落地对齐</label>
+          <select id="groundSel">
+            <option value="on" selected>脚底贴地、水平居中（AR 推荐）</option>
+            <option value="off">不处理位置</option>
+          </select>
+        </div>
+        <div class="opt">
+          <label for="texSel">贴图</label>
+          <select id="texSel">
+            <option value="on" selected>带上贴图和材质颜色</option>
+            <option value="off">不要贴图（素模，文件更小）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="bar">
+        <button class="btn primary" id="convertBtn" disabled>开始转换</button>
+        <button class="btn" id="packBtn" disabled>把转好的打包成一个 ZIP</button>
+        <button class="btn" id="clearBtn" disabled>清空重来</button>
+      </div>
+      <p class="summary" id="summary">还没选文件。</p>
+      <div class="prog" id="prog"><i id="progBar"></i></div>
+
+      <div class="list" id="list"></div>
+
+      <div class="notes">
+        <h2>使用说明</h2>
+        <ul>
+          <li><b>转换结果：</b>每个模型生成一个同名 .usdz，转好后点它右边的「下载」即可；也可以一键把全部结果打包成一个 ZIP 再下载。</li>
+          <li><b>在 iPhone 上看：</b>把 .usdz 存到「文件」App，点开就能看 3D，点右上角 AR 图标可以把它摆进房间里，双指捏合缩放。</li>
+          <li><b>贴图要和模型放在一起：</b>OBJ 的 .mtl 和贴图图片、glTF 的 .bin 和贴图，只要在同一个压缩包里（同文件夹或子文件夹都行），会自动配上。</li>
+          <li><b>7z / RAR / TAR 也可以：</b>和 ZIP 一样直接选就行，在手机本地用 7-Zip 引擎解压，第一次会多等几秒加载引擎；但<b>设了密码的压缩包解不开</b>，请先在别处去掉密码再压。</li>
+          <li><b>动画和骨骼不会保留：</b>USDZ 输出的是静态模型，FBX / glTF 里的骨骼动画转不了；模型本身的形状、材质颜色和贴图会保留。</li>
+          <li><b>已经是 .usdz 的文件</b>会原样列出来，可直接下载，不重复转换。</li>
+          <li><b>文件太大时</b>（单个模型超过约 20 万个面）手机浏览器可能转得慢或内存不足，建议先在 ZIP 里拆小，或换电脑浏览器打开本页转换。</li>
+        </ul>
+      </div>
+    </div>
+
+<script>
+"use strict";
+/* ============ 通用工具 ============ */
+function $(id){ return document.getElementById(id); }
+function extOf(name){ var m = /\.([a-z0-9]+)$/i.exec(name||""); return m ? m[1].toLowerCase() : ""; }
+function baseOf(path){ var p = String(path).split("/"); return p[p.length-1]; }
+function stemOf(name){ return baseOf(name).replace(/\.[^.]+$/, ""); }
+function dirOf(path){ var i = String(path).lastIndexOf("/"); return i < 0 ? "" : String(path).slice(0, i+1); }
+function normPath(p){
+  var parts = String(p).replace(/\\/g,"/").split("/"), out = [];
+  for (var i=0;i<parts.length;i++){
+    var s = parts[i];
+    if (s === "" || s === ".") continue;
+    if (s === ".."){ out.pop(); continue; }
+    out.push(s);
+  }
+  return out.join("/");
+}
+function fmtSize(n){
+  if (n < 1024) return n + " B";
+  if (n < 1024*1024) return (n/1024).toFixed(1) + " KB";
+  return (n/1024/1024).toFixed(2) + " MB";
+}
+function nf(v){ var s = (Math.round(v*100000)/100000).toString(); return s === "-0" ? "0" : s; }
+function sanitize(name){
+  var s = String(name||"Mesh").replace(/[^A-Za-z0-9_]/g,"_");
+  if (!s) s = "Mesh";
+  if (/^[0-9]/.test(s)) s = "_" + s;
+  return s;
+}
+function yieldUI(){ return new Promise(function(r){ setTimeout(r, 10); }); }
+
+/* ============ 全局状态 ============ */
+var MODEL_EXTS = { obj:1, stl:1, glb:1, gltf:1, fbx:1, dae:1, ply:1, usdz:1 };
+var fileMap = {};      /* 归一化路径(小写) -> {path, getArrayBuffer(), getText(), size} */
+var jobs = [];         /* {id, path, name, ext, status, meta, err, blob, url, outName} */
+var jobSeq = 0;
+
+function mapLookup(ref, fromDir){
+  if (!ref) return null;
+  var r = String(ref).replace(/\\/g,"/").trim();
+  try { r = decodeURIComponent(r); } catch(e){}
+  var cands = [];
+  cands.push(normPath(fromDir + r).toLowerCase());
+  cands.push(normPath(r).toLowerCase());
+  cands.push(normPath(r.replace(/^\.\//,"")).toLowerCase());
+  var i, key;
+  for (i=0;i<cands.length;i++){ if (fileMap[cands[i]]) return fileMap[cands[i]]; }
+  var bn = baseOf(r).toLowerCase();
+  for (key in fileMap){ if (baseOf(key) === bn) return fileMap[key]; }
+  return null;
+}
+
+/* ============ 文件收集：ZIP 递归解压（含嵌套 ZIP） ============ */
+function addEntry(path, size, abFn, textFn){
+  var key = normPath(path).toLowerCase();
+  if (!key) return;
+  fileMap[key] = { path: normPath(path), size: size,
+    getArrayBuffer: abFn,
+    getText: textFn || function(){ return abFn().then(function(ab){
+      return new TextDecoder("utf-8").decode(ab); }); } };
+}
+function blobEntry(path, blob){
+  addEntry(path, blob.size,
+    function(){ return blob.arrayBuffer(); },
+    function(){ return blob.text(); });
+}
+/* 压缩包格式：zip 走 JSZip；7z / rar / tar / gz / bz2 / xz / cab 走 7-Zip 的
+   WebAssembly 引擎（7z-wasm，按需从 CDN 加载，在本机解压，不上传服务器） */
+var ARCHIVE_EXTS = { zip:1, "7z":1, rar:1, tar:1, tgz:1, gz:1, bz2:1, xz:1, cab:1 };
+function isArchiveName(name){
+  if (/\.(tar\.gz|tar\.bz2|tar\.xz)$/i.test(name)) return true;
+  return !!ARCHIVE_EXTS[extOf(name)];
+}
+function archivePrefix(name){
+  return String(name).replace(/\.(tar\.gz|tar\.bz2|tar\.xz|zip|7z|rar|tar|tgz|gz|bz2|xz|cab)$/i, "") + "/";
+}
+function sniffArchiveKind(u8){
+  if (!u8 || u8.length < 4) return null;
+  if (u8[0] === 0x50 && u8[1] === 0x4B) return "zip";                                  /* PK */
+  if (u8.length >= 6 && u8[0] === 0x37 && u8[1] === 0x7A && u8[2] === 0xBC &&
+      u8[3] === 0xAF && u8[4] === 0x27 && u8[5] === 0x1C) return "7z";                 /* 7z 头 */
+  if (u8[0] === 0x52 && u8[1] === 0x61 && u8[2] === 0x72 && u8[3] === 0x21) return "rar"; /* Rar! */
+  return null;
+}
+/* 选中一个文件（普通文件或压缩包里的条目）：是压缩包就解开，不是就登记 */
+function addFileMaybeArchive(path, blob, depth){
+  if (depth < 2 && isArchiveName(path)){
+    return extractArchiveBlob(blob, path, depth).catch(function(){
+      blobEntry(path, blob); /* 嵌套压缩包解不开就先留着，不拖垮整包 */
+    });
+  }
+  blobEntry(path, blob);
+  return Promise.resolve();
+}
+function extractArchiveBlob(blob, name, depth){
+  return blob.slice(0, 8).arrayBuffer().then(function(head){
+    var kind = sniffArchiveKind(new Uint8Array(head));
+    if (!kind) kind = extOf(name) === "zip" ? "zip" : "7z";
+    var prefix = depth === 0 ? "" : archivePrefix(name);
+    if (kind === "zip"){
+      return JSZip.loadAsync(blob).then(function(z){
+        return collectFromZip(z, prefix, depth);
+      });
+    }
+    return extractWithSevenZip(blob, prefix, depth);
+  });
+}
+function collectFromZip(zipObj, prefix, depth){
+  var names = Object.keys(zipObj.files);
+  var chain = Promise.resolve();
+  names.forEach(function(name){
+    chain = chain.then(function(){
+      var entry = zipObj.files[name];
+      if (entry.dir) return null;
+      var full = prefix + name;
+      return entry.async("blob").then(function(b){
+        return addFileMaybeArchive(full, b, depth+1);
+      });
+    });
+  });
+  return chain;
+}
+/* ---- 7-Zip 引擎（懒加载，只在真的遇到 7z/RAR/TAR 时才下载） ---- */
+var SEVENZIP_BASE = "https://cdn.jsdelivr.net/npm/7z-wasm@1.2.0/";
+var sevenZipLoading = null;
+function loadSevenZip(){
+  if (window.SevenZip) return Promise.resolve();
+  if (sevenZipLoading) return sevenZipLoading;
+  sevenZipLoading = new Promise(function(res, rej){
+    var s = document.createElement("script");
+    s.src = SEVENZIP_BASE + "7zz.umd.js";
+    s.onload = function(){ res(); };
+    s.onerror = function(){ sevenZipLoading = null; rej(new Error("7z 解压引擎加载失败，请检查网络后重试")); };
+    document.head.appendChild(s);
+  });
+  return sevenZipLoading;
+}
+function extractWithSevenZip(blob, prefix, depth){
+  $("summary").textContent = "正在解压 7z/RAR 压缩包（首次需加载解压引擎，稍慢）…";
+  return loadSevenZip().then(function(){
+    return blob.arrayBuffer();
+  }).then(function(ab){
+    return window.SevenZip({ locateFile: function(p){ return SEVENZIP_BASE + p; } }).then(function(mod){
+      var data = new Uint8Array(ab);
+      var stream = mod.FS.open("/pkg.bin", "w+");
+      mod.FS.write(stream, data, 0, data.length);
+      mod.FS.close(stream);
+      try { mod.FS.mkdir("/out"); } catch(e){}
+      var exitErr = null;
+      try {
+        mod.callMain(["x", "/pkg.bin", "-o/out", "-y", "-aoa", "-bso0", "-bse0", "-bsp0"]);
+      } catch(e){
+        /* 7zz 以抛 ExitStatus 的方式返回退出码：0 正常，1 是警告（如个别文件跳过），都继续 */
+        if (!e || e.name !== "ExitStatus" || (e.status !== 0 && e.status !== 1)) exitErr = e;
+      }
+      var found = [];
+      (function walk(dir, rel){
+        var names;
+        try { names = mod.FS.readdir(dir); } catch(e){ return; }
+        names.forEach(function(nm){
+          if (nm === "." || nm === "..") return;
+          var p = dir + "/" + nm, r = rel ? rel + "/" + nm : nm, st;
+          try { st = mod.FS.stat(p); } catch(e){ return; }
+          if (mod.FS.isDir(st.mode)) walk(p, r);
+          else {
+            try { found.push({ rel: r, data: mod.FS.readFile(p) }); } catch(e){}
+          }
+        });
+      })("/out", "");
+      if (exitErr || !found.length)
+        throw new Error("这个压缩包没能解开（可能设了密码，或格式太特殊）");
+      var chain = Promise.resolve();
+      found.forEach(function(f){
+        chain = chain.then(function(){
+          return addFileMaybeArchive(prefix + f.rel, new Blob([f.data]), depth+1);
+        });
+      });
+      return chain;
+    });
+  });
+}
+function ingestFiles(fileList){
+  var files = Array.prototype.slice.call(fileList);
+  var chain = Promise.resolve();
+  files.forEach(function(f){
+    chain = chain.then(function(){
+      if (isArchiveName(f.name)){
+        return extractArchiveBlob(f, f.name, 0).catch(function(err){
+          throw new Error("「" + f.name + "」打开失败：" + (err && err.message ? err.message : "不是能打开的压缩包"));
+        });
+      }
+      /* 扩展名看不出来时按文件头再认一次（有的 7z 文件后缀被改掉或没有后缀） */
+      return f.slice(0, 8).arrayBuffer().then(function(head){
+        if (sniffArchiveKind(new Uint8Array(head))){
+          return extractArchiveBlob(f, f.name, 0).catch(function(err){
+            throw new Error("「" + f.name + "」打开失败：" + (err && err.message ? err.message : "不是能打开的压缩包"));
+          });
+        }
+        blobEntry(f.name, f);
+        return null;
+      });
+    });
+  });
+  return chain.then(function(){ rebuildJobs(); });
+}
+function rebuildJobs(){
+  jobs = [];
+  var keys = Object.keys(fileMap).sort();
+  keys.forEach(function(k){
+    var e = fileMap[k], ex = extOf(e.path);
+    if (!MODEL_EXTS[ex]) return;
+    jobs.push({ id: ++jobSeq, path: e.path, name: baseOf(e.path), ext: ex,
+      status: ex === "usdz" ? "ready" : "wait", meta: "", err: "", blob: null, url: "", outName: stemOf(e.path) + ".usdz" });
+  });
+  render();
+}
+
+/* ============ 几何中间格式 ============
+   model = { meshes: [ { name, pos:[], nor:[]|null, uv:[]|null,
+               faces:[[cornerIdx,...],...] 已三角化为每面3个角,
+               mat: {color:[r,g,b], rough, metal, opacity, map:{data,mime,ext}|null} } ] }
+   pos/nor/uv 都是"角"级别展开数组（每个面角一份），faces 里存角序号。 */
+function newMesh(name){
+  return { name: name || "Mesh", pos: [], nor: [], uv: [], faces: [],
+           mat: { color: [0.8,0.8,0.8], rough: 0.65, metal: 0.0, opacity: 1, map: null } };
+}
+function pushCorner(mesh, p, n, t){
+  mesh.pos.push(p[0], p[1], p[2]);
+  if (n) mesh.nor.push(n[0], n[1], n[2]);
+  if (t) mesh.uv.push(t[0], t[1]);
+  return mesh.pos.length/3 - 1;
+}
+function faceNormal(a, b, c){
+  var ux=b[0]-a[0], uy=b[1]-a[1], uz=b[2]-a[2];
+  var vx=c[0]-a[0], vy=c[1]-a[1], vz=c[2]-a[2];
+  var nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+  var l=Math.sqrt(nx*nx+ny*ny+nz*nz) || 1;
+  return [nx/l, ny/l, nz/l];
+}
+function finishMesh(mesh){
+  /* 没有法线就按面法线补 */
+  if (mesh.nor.length !== mesh.pos.length){
+    mesh.nor = [];
+    var cornerN = new Array(mesh.pos.length);
+    mesh.faces.forEach(function(f){
+      var a=[mesh.pos[f[0]*3],mesh.pos[f[0]*3+1],mesh.pos[f[0]*3+2]];
+      var b=[mesh.pos[f[1]*3],mesh.pos[f[1]*3+1],mesh.pos[f[1]*3+2]];
+      var c=[mesh.pos[f[2]*3],mesh.pos[f[2]*3+1],mesh.pos[f[2]*3+2]];
+      var n=faceNormal(a,b,c);
+      f.forEach(function(ci){ cornerN[ci*3]=n[0]; cornerN[ci*3+1]=n[1]; cornerN[ci*3+2]=n[2]; });
+    });
+    mesh.nor = cornerN.map(function(v){ return v||0; });
+  }
+  if (mesh.uv.length !== mesh.pos.length/3*2) mesh.uv = [];
+  return mesh;
+}
+function countFaces(model){ var n=0; model.meshes.forEach(function(m){ n+=m.faces.length; }); return n; }
+function countVerts(model){ var n=0; model.meshes.forEach(function(m){ n+=m.pos.length/3; }); return n; }
+
+/* ============ OBJ 解析 ============ */
+function parseOBJ(text, dir, useTex){
+  var lines = text.split(/\r?\n/);
+  var V=[], VT=[], VN=[], mats={}, curMat=null, meshes={}, order=[];
+  function meshFor(matName){
+    var key = matName || "__default";
+    if (!meshes[key]){
+      var m = newMesh("Part_" + (order.length+1));
+      if (matName && mats[matName]) m.mat = mats[matName];
+      meshes[key] = m; order.push(key);
+    }
+    return meshes[key];
+  }
+  var pendingMtl = [];
+  lines.forEach(function(raw){
+    var line = raw.trim();
+    if (!line || line.charAt(0) === "#") return;
+    var sp = line.indexOf(" ");
+    var head = sp<0 ? line : line.slice(0, sp);
+    var rest = sp<0 ? "" : line.slice(sp+1).trim();
+    if (head === "v"){ var a=rest.split(/\s+/); V.push([+a[0],+a[1],+a[2]]); }
+    else if (head === "vt"){ var b=rest.split(/\s+/); VT.push([+b[0], +b[1]||0]); }
+    else if (head === "vn"){ var c=rest.split(/\s+/); VN.push([+c[0],+c[1],+c[2]]); }
+    else if (head === "mtllib"){ pendingMtl.push(rest.split(/\s+/)[0]); }
+    else if (head === "usemtl"){ curMat = rest; meshFor(curMat); }
+    else if (head === "f"){
+      var toks = rest.split(/\s+/), corners = [];
+      var mesh = meshFor(curMat);
+      toks.forEach(function(tok){
+        var seg = tok.split("/");
+        var vi = parseInt(seg[0],10); if (vi<0) vi = V.length+vi+1;
+        var ti = seg.length>1 && seg[1] ? parseInt(seg[1],10) : 0; if (ti<0) ti = VT.length+ti+1;
+        var ni = seg.length>2 && seg[2] ? parseInt(seg[2],10) : 0; if (ni<0) ni = VN.length+ni+1;
+        var p = V[vi-1]; if (!p) return;
+        corners.push(pushCorner(mesh, p, ni?VN[ni-1]:null, ti?VT[ti-1]:null));
+      });
+      for (var i=1;i+1<corners.length;i++) mesh.faces.push([corners[0], corners[i], corners[i+1]]);
+    }
+  });
+  /* 材质库（异步拿不到，这里用同步已缓存的文本：由调用方先预加载到 matsCache） */
+  return { model: { meshes: order.map(function(k){ return finishMesh(meshes[k]); }) }, mtlFiles: pendingMtl };
+}
+function applyMTL(model, mtlText, dir, texWanted){
+  var mats = {}, cur = null;
+  mtlText.split(/\r?\n/).forEach(function(raw){
+    var line = raw.trim();
+    if (!line || line.charAt(0) === "#") return;
+    var sp = line.indexOf(" ");
+    var head = (sp<0?line:line.slice(0,sp)).toLowerCase();
+    var rest = sp<0 ? "" : line.slice(sp+1).trim();
+    if (head === "newmtl"){ cur = { color:[0.8,0.8,0.8], rough:0.65, metal:0, opacity:1, map:null, mapRef:null }; mats[rest] = cur; }
+    else if (!cur) return;
+    else if (head === "kd"){ var a=rest.split(/\s+/); cur.color = [+a[0]||0, +a[1]||0, +a[2]||0]; }
+    else if (head === "d"){ cur.opacity = parseFloat(rest); if (isNaN(cur.opacity)) cur.opacity = 1; }
+    else if (head === "map_kd"){ cur.mapRef = rest.split(/\s+/).pop(); }
+  });
+  return mats;
+}
+
+/* ============ STL 解析 ============ */
+function parseSTL(ab){
+  var dv = new DataView(ab);
+  var mesh = newMesh("STL");
+  var isBinary = false;
+  if (ab.byteLength >= 84){
+    var n = dv.getUint32(80, true);
+    if (84 + n*50 === ab.byteLength) isBinary = true;
+  }
+  if (isBinary){
+    var cnt = dv.getUint32(80, true), off = 84;
+    for (var i=0;i<cnt;i++){
+      var nx=dv.getFloat32(off,true), ny=dv.getFloat32(off+4,true), nz=dv.getFloat32(off+8,true);
+      var idxs=[];
+      for (var k=0;k<3;k++){
+        var o = off+12+k*12;
+        idxs.push(pushCorner(mesh,
+          [dv.getFloat32(o,true), dv.getFloat32(o+4,true), dv.getFloat32(o+8,true)],
+          [nx,ny,nz], null));
+      }
+      mesh.faces.push(idxs);
+      off += 50;
+    }
+  } else {
+    var text = new TextDecoder("utf-8").decode(ab);
+    var verts = [];
+    text.split(/\r?\n/).forEach(function(l){
+      var m = /vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/.exec(l);
+      if (m) verts.push([+m[1],+m[2],+m[3]]);
+    });
+    for (var j=0;j+2<verts.length;j+=3){
+      var f=[ pushCorner(mesh,verts[j],null,null), pushCorner(mesh,verts[j+1],null,null), pushCorner(mesh,verts[j+2],null,null) ];
+      mesh.faces.push(f);
+    }
+  }
+  return { meshes: [finishMesh(mesh)] };
+}
+
+/* ============ PLY 解析 ============ */
+function parsePLY(ab){
+  var headText = new TextDecoder("ascii").decode(ab.slice(0, Math.min(ab.byteLength, 8192)));
+  var endIdx = headText.indexOf("end_header");
+  if (endIdx < 0) throw new Error("PLY 头部损坏");
+  var header = headText.slice(0, endIdx);
+  var bodyStart = endIdx + "end_header".length;
+  while (bodyStart < ab.byteLength && (headText.charAt(bodyStart) === "\n" || headText.charAt(bodyStart) === "\r")) bodyStart++;
+  /* 注意 bodyStart 按 ascii 近似（header 为 ascii，字节偏移一致） */
+  var format = /format\s+(\S+)/.exec(header)[1];
+  var vCount = 0, fCount = 0, props = [], inVertex = false, inFace = false;
+  header.split(/\r?\n/).forEach(function(l){
+    l = l.trim();
+    if (l.indexOf("element vertex") === 0){ vCount = parseInt(l.split(/\s+/)[2],10); inVertex = true; inFace = false; }
+    else if (l.indexOf("element face") === 0){ fCount = parseInt(l.split(/\s+/)[2],10); inFace = true; inVertex = false; }
+    else if (l.indexOf("element ") === 0){ inVertex = false; inFace = false; }
+    else if (l.indexOf("property") === 0 && inVertex){ var p = l.split(/\s+/); props.push(p[p.length-1]); }
+  });
+  var mesh = newMesh("PLY");
+  var verts = [];
+  function readVert(get){
+    var o = {};
+    props.forEach(function(pn, i){ o[pn] = get(i); });
+    var p = [o.x||0, o.y||0, o.z||0];
+    var n = (o.nx !== undefined) ? [o.nx, o.ny, o.nz] : null;
+    var t = (o.u !== undefined) ? [o.u, o.v||0] : (o.s !== undefined ? [o.s, o.t||0] : null);
+    return { p:p, n:n, t:t };
+  }
+  if (format === "ascii"){
+    var body = new TextDecoder("utf-8").decode(ab.slice(bodyStart));
+    var toks = body.split(/\s+/).filter(function(s){ return s.length; });
+    var ptr = 0, i2;
+    for (i2=0;i2<vCount;i2++){
+      var vals = [];
+      for (var q=0;q<props.length;q++) vals.push(parseFloat(toks[ptr++]));
+      verts.push(readVert(function(i){ return vals[i]; }));
+    }
+    for (i2=0;i2<fCount;i2++){
+      var c = parseInt(toks[ptr++],10), cs = [];
+      for (var q2=0;q2<c;q2++){ var vi = parseInt(toks[ptr++],10); cs.push(pushCorner(mesh, verts[vi].p, verts[vi].n, verts[vi].t)); }
+      for (var q3=1;q3+1<cs.length;q3++) mesh.faces.push([cs[0], cs[q3], cs[q3+1]]);
+      /* 跳过该行可能的多余属性（face 的标量 property 极少见，忽略） */
+    }
+  } else if (format === "binary_little_endian"){
+    var dv = new DataView(ab);
+    var typeSize = { float:4, float32:4, double:8, float64:8, uchar:1, uint8:1, char:1, int8:1, ushort:2, uint16:2, short:2, int16:2, int:4, int32:4, uint:4, uint32:4 };
+    var propTypes = [];
+    header.split(/\r?\n/).forEach(function(l){
+      l = l.trim();
+      if (l.indexOf("element vertex") === 0) inVertex = true;
+      else if (l.indexOf("element ") === 0) inVertex = false;
+      else if (l.indexOf("property") === 0 && inVertex){ var p = l.split(/\s+/); propTypes.push(p[1]); }
+    });
+    var stride = 0; propTypes.forEach(function(t){ stride += typeSize[t]||4; });
+    function readNum(dv2, off, t){
+      switch(t){
+        case "float": case "float32": return dv2.getFloat32(off, true);
+        case "double": case "float64": return dv2.getFloat64(off, true);
+        case "uchar": case "uint8": return dv2.getUint8(off);
+        case "char": case "int8": return dv2.getInt8(off);
+        case "ushort": case "uint16": return dv2.getUint16(off, true);
+        case "short": case "int16": return dv2.getInt16(off, true);
+        case "uint": case "uint32": return dv2.getUint32(off, true);
+        default: return dv2.getInt32(off, true);
+      }
+    }
+    var off2 = bodyStart, i3;
+    for (i3=0;i3<vCount;i3++){
+      var vals2 = [], o3 = off2;
+      propTypes.forEach(function(t){ vals2.push(readNum(dv, o3, t)); o3 += typeSize[t]||4; });
+      verts.push(readVert(function(i){ return vals2[i]; }));
+      off2 += stride;
+    }
+    for (i3=0;i3<fCount;i3++){
+      var cnum = dv.getUint8(off2); off2 += 1;
+      var cs2 = [];
+      for (var q4=0;q4<cnum;q4++){ var vi2 = dv.getInt32(off2, true); off2 += 4; cs2.push(pushCorner(mesh, verts[vi2].p, verts[vi2].n, verts[vi2].t)); }
+      for (var q5=1;q5+1<cs2.length;q5++) mesh.faces.push([cs2[0], cs2[q5], cs2[q5+1]]);
+    }
+  } else {
+    throw new Error("暂不支持大端 PLY");
+  }
+  return { meshes: [finishMesh(mesh)] };
+}
+
+/* ============ glTF / GLB 解析 ============ */
+function matIdentity(){ return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; }
+function matMultiply(a, b){ /* 列主序 a*b */
+  var o = new Array(16), r, c, k;
+  for (c=0;c<4;c++) for (r=0;r<4;r++){
+    var s=0; for (k=0;k<4;k++) s += a[k*4+r]*b[c*4+k];
+    o[c*4+r]=s;
+  }
+  return o;
+}
+function matFromTRS(t, q, s){
+  var x=q[0],y=q[1],z=q[2],w=q[3];
+  var x2=x+x,y2=y+y,z2=z+z;
+  var xx=x*x2,xy=x*y2,xz=x*z2, yy=y*y2,yz=y*z2,zz=z*z2, wx=w*x2,wy=w*y2,wz=w*z2;
+  return [
+    (1-(yy+zz))*s[0], (xy+wz)*s[0], (xz-wy)*s[0], 0,
+    (xy-wz)*s[1], (1-(xx+zz))*s[1], (yz+wx)*s[1], 0,
+    (xz+wy)*s[2], (yz-wx)*s[2], (1-(xx+yy))*s[2], 0,
+    t[0], t[1], t[2], 1
+  ];
+}
+function xformPoint(m, p){
+  return [
+    m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12],
+    m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13],
+    m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]
+  ];
+}
+function xformNormal(m, n){
+  /* 用左上 3x3 的逆转置近似：均匀缩放时直接归一化即可，非均匀时略有误差，可接受 */
+  var v = [
+    m[0]*n[0]+m[4]*n[1]+m[8]*n[2],
+    m[1]*n[0]+m[5]*n[1]+m[9]*n[2],
+    m[2]*n[0]+m[6]*n[1]+m[10]*n[2]
+  ];
+  var l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]) || 1;
+  return [v[0]/l, v[1]/l, v[2]/l];
+}
+function readAccessor(gltf, buffers, idx){
+  var acc = gltf.accessors[idx];
+  var bv = gltf.bufferViews[acc.bufferView];
+  var buf = buffers[bv.buffer || 0];
+  var compSize = { 5120:1, 5121:1, 5122:2, 5123:2, 5125:4, 5126:4 }[acc.componentType];
+  var numComp = { SCALAR:1, VEC2:2, VEC3:3, VEC4:4, MAT4:16 }[acc.type] || 1;
+  var stride = bv.byteStride || compSize*numComp;
+  var start = (bv.byteOffset||0) + (acc.byteOffset||0);
+  var dv = new DataView(buf);
+  var out = new Array(acc.count*numComp);
+  for (var i=0;i<acc.count;i++){
+    for (var c=0;c<numComp;c++){
+      var o = start + i*stride + c*compSize;
+      switch(acc.componentType){
+        case 5126: out[i*numComp+c] = dv.getFloat32(o, true); break;
+        case 5125: out[i*numComp+c] = dv.getUint32(o, true); break;
+        case 5123: out[i*numComp+c] = dv.getUint16(o, true); break;
+        case 5121: out[i*numComp+c] = dv.getUint8(o); break;
+        case 5122: out[i*numComp+c] = dv.getInt16(o, true); break;
+        case 5120: out[i*numComp+c] = dv.getInt8(o); break;
+      }
+    }
+  }
+  return out;
+}
+function buildGLTF(gltf, buffers, imageData){
+  /* imageData: [{data:Uint8Array, mime}] 与 gltf.images 对齐（可能有 null） */
+  var model = { meshes: [] };
+  function materialFor(prim){
+    var mat = { color:[0.8,0.8,0.8], rough:0.65, metal:0, opacity:1, map:null };
+    if (prim.material === undefined || !gltf.materials || !gltf.materials[prim.material]) return mat;
+    var gm = gltf.materials[prim.material];
+    var pbr = gm.pbrMetallicRoughness || {};
+    if (pbr.baseColorFactor) { mat.color = [pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]]; mat.opacity = pbr.baseColorFactor[3]; }
+    if (pbr.roughnessFactor !== undefined) mat.rough = pbr.roughnessFactor;
+    if (pbr.metallicFactor !== undefined) mat.metal = pbr.metallicFactor;
+    if (gm.alphaMode === "BLEND" && mat.opacity === 1) mat.opacity = 0.999;
+    if (pbr.baseColorTexture && gltf.textures){
+      var tex = gltf.textures[pbr.baseColorTexture.index];
+      if (tex && imageData[tex.source]) mat.map = imageData[tex.source];
+    }
+    return mat;
+  }
+  function addMesh(gmesh, matrix, nodeName){
+    (gmesh.primitives||[]).forEach(function(prim, pi){
+      if (prim.mode !== undefined && prim.mode !== 4) return;
+      var posA = readAccessor(gltf, buffers, prim.attributes.POSITION);
+      var norA = prim.attributes.NORMAL !== undefined ? readAccessor(gltf, buffers, prim.attributes.NORMAL) : null;
+      var uvA = prim.attributes.TEXCOORD_0 !== undefined ? readAccessor(gltf, buffers, prim.attributes.TEXCOORD_0) : null;
+      var idxA = prim.indices !== undefined ? readAccessor(gltf, buffers, prim.indices) : null;
+      var count = posA.length/3;
+      var orderIdx = [];
+      var i;
+      if (idxA) { for (i=0;i<idxA.length;i++) orderIdx.push(idxA[i]); }
+      else { for (i=0;i<count;i++) orderIdx.push(i); }
+      var mesh = newMesh((nodeName || gmesh.name || "Mesh") + (pi>0 ? "_" + (pi+1) : ""));
+      mesh.mat = materialFor(prim);
+      var cornerMap = [];
+      for (i=0;i<orderIdx.length;i++){
+        var vi = orderIdx[i];
+        var p = xformPoint(matrix, [posA[vi*3], posA[vi*3+1], posA[vi*3+2]]);
+        var n = norA ? xformNormal(matrix, [norA[vi*3], norA[vi*3+1], norA[vi*3+2]]) : null;
+        var t = uvA ? [uvA[vi*2], 1 - uvA[vi*2+1]] : null; /* glTF 的 V 原点在上方，USD 在下方，翻转 */
+        cornerMap.push(pushCorner(mesh, p, n, t));
+      }
+      for (i=0;i+2<cornerMap.length;i+=3) mesh.faces.push([cornerMap[i], cornerMap[i+1], cornerMap[i+2]]);
+      if (mesh.faces.length) model.meshes.push(finishMesh(mesh));
+    });
+  }
+  var visited = {};
+  function walkNode(ni, parentM){
+    var node = gltf.nodes[ni];
+    var m = parentM;
+    if (node.matrix) m = matMultiply(parentM, node.matrix);
+    else if (node.translation || node.rotation || node.scale)
+      m = matMultiply(parentM, matFromTRS(node.translation||[0,0,0], node.rotation||[0,0,0,1], node.scale||[1,1,1]));
+    if (node.mesh !== undefined && gltf.meshes[node.mesh]){ addMesh(gltf.meshes[node.mesh], m, node.name); visited[node.mesh] = 1; }
+    (node.children||[]).forEach(function(c){ walkNode(c, m); });
+  }
+  if (gltf.scenes && gltf.nodes){
+    var scene = gltf.scenes[gltf.scene||0] || gltf.scenes[0];
+    (scene.nodes||[]).forEach(function(ni){ walkNode(ni, matIdentity()); });
+  }
+  (gltf.meshes||[]).forEach(function(gm, i){ if (!visited[i]) addMesh(gm, matIdentity(), gm.name); });
+  if (!model.meshes.length) throw new Error("glTF 里没找到网格");
+  return model;
+}
+function parseGLB(ab){
+  var dv = new DataView(ab);
+  if (dv.getUint32(0, true) !== 0x46546C67) throw new Error("GLB 文件头不对");
+  var off = 12, json = null, bin = null;
+  while (off < ab.byteLength){
+    var len = dv.getUint32(off, true), type = dv.getUint32(off+4, true);
+    var chunk = ab.slice(off+8, off+8+len);
+    if (type === 0x4E4F534A) json = JSON.parse(new TextDecoder("utf-8").decode(chunk));
+    else if (type === 0x004E4942) bin = chunk;
+    off += 8 + len;
+  }
+  if (!json) throw new Error("GLB 里没有场景数据");
+  var buffers = [bin];
+  var images = (json.images||[]).map(function(img){
+    if (img.bufferView === undefined) return null;
+    var bv = json.bufferViews[img.bufferView];
+    var data = new Uint8Array(bin, bv.byteOffset||0, bv.byteLength);
+    return { data: new Uint8Array(data), mime: img.mimeType || "image/png", ext: img.mimeType === "image/jpeg" ? "jpg" : "png" };
+  });
+  return Promise.resolve(buildGLTF(json, buffers, images));
+}
+function parseGLTFFile(entry, dir){
+  return entry.getText().then(function(text){
+    var gltf = JSON.parse(text);
+    var buffersP = (gltf.buffers||[]).map(function(b){
+      if (!b.uri) return Promise.resolve(new ArrayBuffer(0));
+      if (b.uri.indexOf("data:") === 0){
+        var binStr = atob(b.uri.split(",")[1]);
+        var arr = new Uint8Array(binStr.length);
+        for (var i=0;i<binStr.length;i++) arr[i] = binStr.charCodeAt(i);
+        return Promise.resolve(arr.buffer);
+      }
+      var e = mapLookup(b.uri, dir);
+      if (!e) throw new Error("找不到 glTF 的数据文件：" + b.uri);
+      return e.getArrayBuffer();
+    });
+    var imagesP = (gltf.images||[]).map(function(img){
+      if (img.bufferView !== undefined) return null; /* 在 buffers 齐了之后再切 */
+      if (!img.uri) return Promise.resolve(null);
+      if (img.uri.indexOf("data:") === 0){
+        var mime = /data:([^;]+)/.exec(img.uri)[1];
+        var binStr = atob(img.uri.split(",")[1]);
+        var arr = new Uint8Array(binStr.length);
+        for (var i=0;i<binStr.length;i++) arr[i] = binStr.charCodeAt(i);
+        return Promise.resolve({ data: arr, mime: mime, ext: mime === "image/jpeg" ? "jpg" : "png" });
+      }
+      var e = mapLookup(img.uri, dir);
+      if (!e) return Promise.resolve(null);
+      return e.getArrayBuffer().then(function(ab){
+        var ex = extOf(img.uri);
+        return { data: new Uint8Array(ab), mime: ex === "jpg" || ex === "jpeg" ? "image/jpeg" : "image/png", ext: ex === "jpg" || ex === "jpeg" ? "jpg" : "png" };
+      });
+    });
+    return Promise.all(buffersP).then(function(buffers){
+      return Promise.all(imagesP).then(function(images){
+        images = images.map(function(im, i){
+          if (im) return im;
+          var img = gltf.images[i];
+          if (img && img.bufferView !== undefined){
+            var bv = gltf.bufferViews[img.bufferView];
+            var buf = buffers[bv.buffer||0];
+            var data = new Uint8Array(buf, bv.byteOffset||0, bv.byteLength);
+            return { data: new Uint8Array(data), mime: img.mimeType || "image/png", ext: img.mimeType === "image/jpeg" ? "jpg" : "png" };
+          }
+          return null;
+        });
+        return buildGLTF(gltf, buffers, images);
+      });
+    });
+  });
+}
+
+/* ============ DAE (Collada) 解析 ============ */
+function parseDAE(text){
+  var doc = new DOMParser().parseFromString(text, "text/xml");
+  var model = { meshes: [] };
+  function floats(el){
+    if (!el) return [];
+    return el.textContent.trim().split(/\s+/).map(function(s){ return parseFloat(s); });
+  }
+  var geos = doc.getElementsByTagName("geometry");
+  for (var gi=0; gi<geos.length; gi++){
+    var geo = geos[gi];
+    var sources = {};
+    var srcEls = geo.getElementsByTagName("source");
+    var si;
+    for (si=0; si<srcEls.length; si++){
+      var arr = srcEls[si].getElementsByTagName("float_array")[0];
+      if (arr) sources[srcEls[si].getAttribute("id")] = floats(arr);
+    }
+    var vertsEl = geo.getElementsByTagName("vertices")[0];
+    var posId = null;
+    if (vertsEl){
+      var ins = vertsEl.getElementsByTagName("input");
+      for (si=0; si<ins.length; si++) if (ins[si].getAttribute("semantic") === "POSITION")
+        posId = ins[si].getAttribute("source").replace(/^#/, "");
+    }
+    var mesh = newMesh(geo.getAttribute("name") || geo.getAttribute("id") || "DAE");
+    var triEls = geo.getElementsByTagName("triangles");
+    var polyEls = geo.getElementsByTagName("polylist");
+    function consume(primEl, counts){
+      var inputs = primEl.getElementsByTagName("input");
+      var byOffset = {}, maxOff = 0;
+      for (var ii=0; ii<inputs.length; ii++){
+        var off = parseInt(inputs[ii].getAttribute("offset"), 10);
+        byOffset[off] = { sem: inputs[ii].getAttribute("semantic"), src: inputs[ii].getAttribute("source").replace(/^#/, "") };
+        if (off > maxOff) maxOff = off;
+      }
+      var pEl = primEl.getElementsByTagName("p")[0];
+      if (!pEl) return;
+      var p = pEl.textContent.trim().split(/\s+/).map(function(s){ return parseInt(s, 10); });
+      var stride = maxOff + 1;
+      var cornerLists = [], ci = 0;
+      counts.forEach(function(cnt){
+        var corners = [];
+        for (var k=0;k<cnt;k++){
+          var base = ci*stride; ci++;
+          var P=null, N=null, T=null;
+          for (var o=0;o<stride;o++){
+            var inp = byOffset[o]; if (!inp) continue;
+            var vi = p[base+o];
+            var srcId = inp.src === (vertsEl && vertsEl.getAttribute("id")) ? posId : inp.src;
+            var arr2 = sources[srcId]; if (!arr2) continue;
+            if (inp.sem === "VERTEX" || inp.sem === "POSITION") P = [arr2[vi*3], arr2[vi*3+1], arr2[vi*3+2]];
+            else if (inp.sem === "NORMAL") N = [arr2[vi*3], arr2[vi*3+1], arr2[vi*3+2]];
+            else if (inp.sem === "TEXCOORD") T = [arr2[vi*2], arr2[vi*2+1]];
+          }
+          if (P) corners.push(pushCorner(mesh, P, N, T));
+        }
+        for (var q=1;q+1<corners.length;q++) mesh.faces.push([corners[0], corners[q], corners[q+1]]);
+      });
+    }
+    var ti;
+    for (ti=0; ti<triEls.length; ti++){
+      var cnt3 = parseInt(triEls[ti].getAttribute("count"), 10);
+      consume(triEls[ti], new Array(cnt3).fill(3));
+    }
+    for (ti=0; ti<polyEls.length; ti++){
+      var vc = polyEls[ti].getElementsByTagName("vcount")[0];
+      var counts = vc ? vc.textContent.trim().split(/\s+/).map(function(s){ return parseInt(s,10); }) : [];
+      consume(polyEls[ti], counts);
+    }
+    if (mesh.faces.length) model.meshes.push(finishMesh(mesh));
+  }
+  if (!model.meshes.length) throw new Error("DAE 里没找到网格");
+  return model;
+}
+
+/* ============ FBX 解析（网格部分） ============ */
+function fbxBuildGeometry(verts, polyIdx, normals, uvs){
+  var mesh = newMesh("FBX");
+  var polys = [], cur = [];
+  polyIdx.forEach(function(v){
+    if (v < 0){ cur.push(v ^ -1); polys.push(cur); cur = []; }
+    else cur.push(v);
+  });
+  if (cur.length) polys.push(cur);
+  var cornerCursor = 0;
+  polys.forEach(function(poly){
+    var corners = [];
+    poly.forEach(function(vi){
+      var p = [verts[vi*3], verts[vi*3+1], verts[vi*3+2]];
+      var n = null, t = null;
+      if (normals && normals.length >= (cornerCursor+1)*3)
+        n = [normals[cornerCursor*3], normals[cornerCursor*3+1], normals[cornerCursor*3+2]];
+      if (uvs && uvs.length >= (cornerCursor+1)*2)
+        t = [uvs[cornerCursor*2], uvs[cornerCursor*2+1]];
+      corners.push(pushCorner(mesh, p, n, t));
+      cornerCursor++;
+    });
+    for (var i=1;i+1<corners.length;i++) mesh.faces.push([corners[0], corners[i], corners[i+1]]);
+  });
+  return finishMesh(mesh);
+}
+function matFromEulerTRS(t, eDeg, s){
+  var rx=(eDeg[0]||0)*Math.PI/180, ry=(eDeg[1]||0)*Math.PI/180, rz=(eDeg[2]||0)*Math.PI/180;
+  var cx=Math.cos(rx), sx=Math.sin(rx), cy=Math.cos(ry), sy=Math.sin(ry), cz=Math.cos(rz), sz=Math.sin(rz);
+  return [
+    cy*cz*s[0], (cx*sz+sx*sy*cz)*s[0], (sx*sz-cx*sy*cz)*s[0], 0,
+    -cy*sz*s[1], (cx*cz-sx*sy*sz)*s[1], (sx*cz+cx*sy*sz)*s[1], 0,
+    sy*s[2], -sx*cy*s[2], cx*cy*s[2], 0,
+    t[0]||0, t[1]||0, t[2]||0, 1
+  ];
+}
+function fbxApplyMatrix(mesh, m){
+  var i;
+  for (i=0;i<mesh.pos.length;i+=3){
+    var p = xformPoint(m, [mesh.pos[i], mesh.pos[i+1], mesh.pos[i+2]]);
+    mesh.pos[i]=p[0]; mesh.pos[i+1]=p[1]; mesh.pos[i+2]=p[2];
+  }
+  if (mesh.nor.length === mesh.pos.length){
+    for (i=0;i<mesh.nor.length;i+=3){
+      var n = xformNormal(m, [mesh.nor[i], mesh.nor[i+1], mesh.nor[i+2]]);
+      mesh.nor[i]=n[0]; mesh.nor[i+1]=n[1]; mesh.nor[i+2]=n[2];
+    }
+  }
+}
+function fbxTransformMeshes(meshes, scale, zUp){
+  meshes.forEach(function(mesh){
+    var i;
+    for (i=0;i<mesh.pos.length;i+=3){
+      var x=mesh.pos[i]*scale, y=mesh.pos[i+1]*scale, z=mesh.pos[i+2]*scale;
+      if (zUp){ mesh.pos[i]=x; mesh.pos[i+1]=z; mesh.pos[i+2]=-y; }
+      else { mesh.pos[i]=x; mesh.pos[i+1]=y; mesh.pos[i+2]=z; }
+    }
+    if (zUp && mesh.nor.length === mesh.pos.length){
+      for (i=0;i<mesh.nor.length;i+=3){
+        var nx=mesh.nor[i], ny=mesh.nor[i+1], nz=mesh.nor[i+2];
+        mesh.nor[i]=nx; mesh.nor[i+1]=nz; mesh.nor[i+2]=-ny;
+      }
+    }
+  });
+}
+function parseFBXAscii(text){
+  function arraysAfter(keyword){
+    var out = [], idx = 0;
+    while (true){
+      var at = text.indexOf(keyword, idx);
+      if (at < 0) break;
+      var aStart = text.indexOf("a:", at);
+      var bOpen = text.indexOf("{", at);
+      var bClose = text.indexOf("}", bOpen);
+      if (aStart < 0 || bOpen < 0 || bClose < 0) break;
+      var body = text.slice(aStart+2, bClose);
+      out.push(body.split(",").map(function(s){ return parseFloat(s); }).filter(function(v){ return !isNaN(v); }));
+      idx = bClose + 1;
+    }
+    return out;
+  }
+  var vertsArr = arraysAfter("Vertices:");
+  var idxArr = arraysAfter("PolygonVertexIndex:");
+  var norArr = arraysAfter("Normals:");
+  var uvArr = arraysAfter("UV:");
+  var meshes = [];
+  for (var i=0;i<vertsArr.length;i++){
+    if (!idxArr[i]) continue;
+    meshes.push(fbxBuildGeometry(vertsArr[i], idxArr[i], norArr[i] || null, uvArr[i] || null));
+  }
+  if (!meshes.length) throw new Error("FBX 里没找到网格数据");
+  var upM = /"UpAxis",\s*"int",\s*"Integer",\s*"",\s*(\d)/.exec(text);
+  var unitM = /"UnitScaleFactor",\s*"double",\s*"Number",\s*"",\s*([\d.eE+-]+)/.exec(text);
+  var scale = unitM ? parseFloat(unitM[1]) / 100 : 1;
+  fbxTransformMeshes(meshes, scale > 0 ? scale : 1, upM ? parseInt(upM[1], 10) === 2 : false);
+  return { meshes: meshes };
+}
+function inflateZlib(u8){
+  if (typeof DecompressionStream === "undefined")
+    throw new Error("当前浏览器太旧，解不开这种 FBX（需要 Safari 16.4 以上）");
+  var stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Response(stream).arrayBuffer();
+}
+function parseFBXBinary(ab){
+  var dv = new DataView(ab);
+  var version = dv.getUint32(23, true);
+  var wide = version >= 7500;
+  var pos = 27;
+  async function readProp(p){
+    var t = String.fromCharCode(dv.getUint8(p)); p++;
+    var val, n, i;
+    switch(t){
+      case "Y": val = dv.getInt16(p, true); p += 2; break;
+      case "C": val = dv.getUint8(p) !== 0; p += 1; break;
+      case "I": val = dv.getInt32(p, true); p += 4; break;
+      case "F": val = dv.getFloat32(p, true); p += 4; break;
+      case "D": val = dv.getFloat64(p, true); p += 8; break;
+      case "L": val = Number(dv.getBigInt64(p, true)); p += 8; break;
+      case "S": case "R": {
+        n = dv.getUint32(p, true); p += 4;
+        val = "";
+        if (t === "S"){ var s2 = new TextDecoder("utf-8").decode(ab.slice(p, p+n)); val = s2; }
+        p += n; break;
+      }
+      case "f": case "d": case "l": case "i": case "b": {
+        var len = dv.getUint32(p, true); p += 4;
+        var enc = dv.getUint32(p, true); p += 4;
+        var clen = dv.getUint32(p, true); p += 4;
+        var esz = { f:4, d:8, l:8, i:4, b:1 }[t];
+        var raw = ab.slice(p, p + clen);
+        p += clen;
+        var buf = enc === 0 ? raw : await inflateZlib(new Uint8Array(raw));
+        var dv2 = new DataView(buf);
+        val = new Array(len);
+        for (i=0;i<len;i++){
+          var o = i*esz;
+          if (t === "f") val[i] = dv2.getFloat32(o, true);
+          else if (t === "d") val[i] = dv2.getFloat64(o, true);
+          else if (t === "i") val[i] = dv2.getInt32(o, true);
+          else if (t === "l") val[i] = Number(dv2.getBigInt64(o, true));
+          else val[i] = dv2.getUint8(o);
+        }
+        break;
+      }
+      default: throw new Error("FBX 属性类型不认识：" + t);
+    }
+    return { val: val, next: p };
+  }
+  async function readNode(p){
+    var endOffset, numProps, nameLen;
+    if (wide){
+      endOffset = Number(dv.getBigUint64(p, true)); p += 8;
+      numProps = Number(dv.getBigUint64(p, true)); p += 8;
+      p += 8; /* propListLen */
+      nameLen = dv.getUint8(p); p += 1;
+    } else {
+      endOffset = dv.getUint32(p, true); p += 4;
+      numProps = dv.getUint32(p, true); p += 4;
+      p += 4;
+      nameLen = dv.getUint8(p); p += 1;
+    }
+    if (endOffset === 0) return null;
+    var name = new TextDecoder("utf-8").decode(ab.slice(p, p+nameLen)); p += nameLen;
+    var props = [];
+    for (var i=0;i<numProps;i++){ var r = await readProp(p); props.push(r.val); p = r.next; }
+    var node = { name: name, props: props, children: [] };
+    var sentinel = wide ? 25 : 13;
+    while (p + sentinel <= endOffset && endOffset - p > sentinel){
+      var child = await readNode(p);
+      if (!child) break;
+      node.children.push(child);
+      p = child._end;
+    }
+    node._end = endOffset;
+    return node;
+  }
+  return (async function(){
+    var roots = [];
+    while (pos < ab.byteLength - (wide ? 25 : 13)){
+      var node = await readNode(pos);
+      if (!node) break;
+      roots.push(node);
+      pos = node._end;
+    }
+    var geoById = {}, modelById = {}, connParent = {};
+    function collect(nodes){
+      nodes.forEach(function(n){
+        if (n.name === "Geometry" && n.props[2] === "Mesh") geoById[n.props[0]] = n;
+        else if (n.name === "Model") modelById[n.props[0]] = n;
+        else if (n.name === "Connections"){
+          n.children.forEach(function(c){
+            if (c.name === "C" && c.props[0] === "OO") connParent[c.props[1]] = c.props[2];
+          });
+        }
+        collect(n.children);
+      });
+    }
+    collect(roots);
+    function p70(node){
+      var d = {};
+      node.children.forEach(function(c){
+        if (c.name !== "Properties70") return;
+        c.children.forEach(function(p){
+          if (p.name === "P") d[p.props[0]] = [p.props[4], p.props[5], p.props[6]];
+        });
+      });
+      return d;
+    }
+    var worldCache = {};
+    function modelWorld(id){
+      if (worldCache[id]) return worldCache[id];
+      var node = modelById[id];
+      if (!node) return matIdentity();
+      var d = p70(node);
+      var m = matFromEulerTRS(d["Lcl Translation"]||[0,0,0], d["Lcl Rotation"]||[0,0,0], d["Lcl Scaling"]||[1,1,1]);
+      var parent = connParent[id];
+      if (parent !== undefined && modelById[parent]) m = matMultiply(modelWorld(parent), m);
+      worldCache[id] = m;
+      return m;
+    }
+    function geoData(g){
+      var verts = null, idx = null, normals = null, uvs = null;
+      g.children.forEach(function(c){
+        if (c.name === "Vertices") verts = c.props[0];
+        else if (c.name === "PolygonVertexIndex") idx = c.props[0];
+        else if (c.name === "LayerElementNormal"){
+          c.children.forEach(function(cc){ if (cc.name === "Normals") normals = cc.props[0]; });
+        } else if (c.name === "LayerElementUV"){
+          c.children.forEach(function(cc){ if (cc.name === "UV") uvs = cc.props[0]; });
+        }
+      });
+      return { verts: verts, idx: idx, normals: normals, uvs: uvs };
+    }
+    var meshes = [], usedGeo = {};
+    Object.keys(modelById).forEach(function(mid){
+      var geoId = null, cid;
+      for (cid in connParent){ if (String(connParent[cid]) === String(mid) && geoById[cid]) geoId = cid; }
+      if (geoId === null) return;
+      usedGeo[geoId] = 1;
+      var gd = geoData(geoById[geoId]);
+      var mesh = fbxBuildGeometry(gd.verts || [], gd.idx || [], gd.normals, gd.uvs);
+      if (!mesh.faces.length) return;
+      var d = p70(modelById[mid]);
+      var gm = matFromEulerTRS(d["GeometricTranslation"]||[0,0,0], d["GeometricRotation"]||[0,0,0], d["GeometricScaling"]||[1,1,1]);
+      fbxApplyMatrix(mesh, matMultiply(modelWorld(mid), gm));
+      var nm = String(modelById[mid].props[1] || "").split("\u0000")[0].split("::").pop();
+      if (nm) mesh.name = nm;
+      meshes.push(mesh);
+    });
+    Object.keys(geoById).forEach(function(gid){
+      if (usedGeo[gid]) return;
+      var gd = geoData(geoById[gid]);
+      var mesh = fbxBuildGeometry(gd.verts || [], gd.idx || [], gd.normals, gd.uvs);
+      if (mesh.faces.length) meshes.push(mesh);
+    });
+    if (!meshes.length) throw new Error("FBX 里没找到网格数据");
+    /* 全局设置：单位换算到米、Z 朝上转 Y 朝上 */
+    var upAxis = 1, unitScale = 1;
+    roots.forEach(function(r){
+      if (r.name !== "GlobalSettings") return;
+      r.children.forEach(function(c){
+        if (c.name !== "Properties70") return;
+        c.children.forEach(function(p){
+          if (p.name !== "P") return;
+          if (p.props[0] === "UpAxis") upAxis = p.props[4];
+          if (p.props[0] === "UnitScaleFactor") unitScale = p.props[4];
+        });
+      });
+    });
+    var sc = (typeof unitScale === "number" && unitScale > 0) ? unitScale/100 : 1;
+    fbxTransformMeshes(meshes, sc, upAxis === 2);
+    return { meshes: meshes };
+  })();
+}
+function parseFBX(ab){
+  var head = new TextDecoder("ascii").decode(ab.slice(0, 32));
+  if (head.indexOf("Kaydara FBX Binary") === 0) return parseFBXBinary(ab);
+  return Promise.resolve(parseFBXAscii(new TextDecoder("utf-8").decode(ab)));
+}
+
+/* ============ USDZ 生成 ============ */
+function buildUSDZ(model, opts){
+  /* 计算包围盒 */
+  var min = [Infinity,Infinity,Infinity], max = [-Infinity,-Infinity,-Infinity];
+  model.meshes.forEach(function(m){
+    for (var i=0;i<m.pos.length;i+=3){
+      for (var a=0;a<3;a++){
+        if (m.pos[i+a] < min[a]) min[a] = m.pos[i+a];
+        if (m.pos[i+a] > max[a]) max[a] = m.pos[i+a];
+      }
+    }
+  });
+  var height = max[1] - min[1];
+  var scale = 1;
+  if (opts.height !== "keep" && height > 0) scale = parseFloat(opts.height) / height;
+  var cx = (min[0]+max[0])/2, cz = (min[2]+max[2])/2;
+  function tx(p){
+    if (opts.ground){
+      return [ (p[0]-cx)*scale, (p[1]-min[1])*scale, (p[2]-cz)*scale ];
+    }
+    return [ p[0]*scale, p[1]*scale, p[2]*scale ];
+  }
+  var outMin = tx(min), outMax = tx(max);
+  /* 贴图登记 */
+  var texFiles = []; /* {name, data} */
+  var texKey = {};
+  function texNameFor(map){
+    var key = map.ext + "_" + map.data.length + "_" + (map.data[0]||0) + "_" + (map.data[map.data.length-1]||0);
+    if (texKey[key]) return texKey[key];
+    var nm = "textures/tex" + texFiles.length + "." + map.ext;
+    texFiles.push({ name: nm, data: map.data });
+    texKey[key] = nm;
+    return nm;
+  }
+  var L = [];
+  L.push("#usda 1.0");
+  L.push("(");
+  L.push('    defaultPrim = "Model"');
+  L.push("    metersPerUnit = 1");
+  L.push('    upAxis = "Y"');
+  L.push(")");
+  L.push("");
+  L.push('def Xform "Model"');
+  L.push("{");
+  /* 材质 */
+  var usedMats = [];
+  model.meshes.forEach(function(m, i){
+    var key = JSON.stringify([m.mat.color, m.mat.rough, m.mat.metal, m.mat.opacity,
+      (opts.useTex && m.mat.map) ? texNameFor(m.mat.map) : ""]);
+    if (usedMats.indexOf(key) < 0){ usedMats.push(key); m._matIdx = usedMats.length-1; }
+    else m._matIdx = usedMats.indexOf(key);
+  });
+  if (usedMats.length){
+    L.push('    def Scope "Materials"');
+    L.push("    {");
+    model.meshes.forEach(function(){});
+    var written = {};
+    model.meshes.forEach(function(m){
+      if (written[m._matIdx]) return;
+      written[m._matIdx] = 1;
+      var mn = "Mat_" + m._matIdx;
+      var texFile = (opts.useTex && m.mat.map) ? texNameFor(m.mat.map) : null;
+      L.push('        def Material "' + mn + '"');
+      L.push("        {");
+      L.push('            token outputs:surface.connect = </Model/Materials/' + mn + '/PreviewSurface.outputs:surface>');
+      L.push('            def Shader "PreviewSurface"');
+      L.push("            {");
+      L.push('                uniform token info:id = "UsdPreviewSurface"');
+      if (texFile){
+        L.push("                color3f inputs:diffuseColor.connect = </Model/Materials/" + mn + "/DiffuseTex.outputs:rgb>");
+      } else {
+        L.push("                color3f inputs:diffuseColor = (" + nf(m.mat.color[0]) + ", " + nf(m.mat.color[1]) + ", " + nf(m.mat.color[2]) + ")");
+      }
+      L.push("                float inputs:roughness = " + nf(m.mat.rough));
+      L.push("                float inputs:metallic = " + nf(m.mat.metal));
+      if (m.mat.opacity < 1) L.push("                float inputs:opacity = " + nf(m.mat.opacity));
+      L.push('                token outputs:surface');
+      L.push("            }");
+      if (texFile){
+        L.push('            def Shader "DiffuseTex"');
+        L.push("            {");
+        L.push('                uniform token info:id = "UsdUVTexture"');
+        L.push("                asset inputs:file = @" + texFile + "@");
+        L.push('                token inputs:wrapS = "repeat"');
+        L.push('                token inputs:wrapT = "repeat"');
+        L.push("                float3 outputs:rgb");
+        L.push("            }");
+        L.push('            def Shader "PrimvarReader"');
+        L.push("            {");
+        L.push('                uniform token info:id = "UsdPrimvarReader_float2"');
+        L.push('                string inputs:varname = "st"');
+        L.push("                float2 outputs:result");
+        L.push("            }");
+      }
+      L.push("        }");
+    });
+    L.push("    }");
+  }
+  /* 网格 */
+  model.meshes.forEach(function(m, mi){
+    var name = sanitize(m.name) + (mi>0 ? "" : "");
+    /* 名字去重 */
+    var nm = name, dup = 2;
+    while (model.meshes.slice(0, mi).some(function(x){ return x._usdName === nm; })) nm = name + "_" + (dup++);
+    m._usdName = nm;
+    L.push('    def Mesh "' + nm + '"');
+    L.push("    {");
+    if (usedMats.length)
+      L.push("        rel material:binding = </Model/Materials/Mat_" + m._matIdx + ">");
+    var pts = [];
+    for (var i=0;i<m.pos.length;i+=3){
+      var p = tx([m.pos[i], m.pos[i+1], m.pos[i+2]]);
+      pts.push("(" + nf(p[0]) + ", " + nf(p[1]) + ", " + nf(p[2]) + ")");
+    }
+    L.push("        point3f[] points = [" + pts.join(", ") + "]");
+    var idx = [], counts = [];
+    m.faces.forEach(function(f){ idx.push(f[0], f[1], f[2]); counts.push(3); });
+    L.push("        int[] faceVertexIndices = [" + idx.join(", ") + "]");
+    L.push("        int[] faceVertexCounts = [" + counts.join(", ") + "]");
+    if (m.nor.length === m.pos.length){
+      var ns = [];
+      for (var j=0;j<m.nor.length;j+=3) ns.push("(" + nf(m.nor[j]) + ", " + nf(m.nor[j+1]) + ", " + nf(m.nor[j+2]) + ")");
+      L.push("        normal3f[] normals = [" + ns.join(", ") + "] (");
+      L.push('            interpolation = "vertex"');
+      L.push("        )");
+    }
+    if (opts.useTex && m.uv.length === m.pos.length/3*2){
+      var ts = [];
+      for (var k=0;k<m.uv.length;k+=2) ts.push("(" + nf(m.uv[k]) + ", " + nf(m.uv[k+1]) + ")");
+      L.push("        texCoord2f[] primvars:st = [" + ts.join(", ") + "] (");
+      L.push('            interpolation = "vertex"');
+      L.push("        )");
+    }
+    L.push("        float3[] extent = [(" + nf(outMin[0]) + ", " + nf(outMin[1]) + ", " + nf(outMin[2]) + "), (" + nf(outMax[0]) + ", " + nf(outMax[1]) + ", " + nf(outMax[2]) + ")]");
+    L.push('        uniform token subdivisionScheme = "none"');
+    L.push("    }");
+  });
+  L.push("}");
+  var usda = L.join("\n");
+  var zip = new JSZip();
+  var storeOpts = { compression: "STORE" };
+  zip.file("model.usda", usda, storeOpts);
+  texFiles.forEach(function(t){
+    zip.file(t.name, t.data, storeOpts);
+  });
+  return zip.generateAsync({ type: "blob", compression: "STORE", mimeType: "model/vnd.usdz+zip" });
+}
+
+/* ============ 转换调度 ============ */
+function loadModel(job){
+  var entry = fileMap[job.path.toLowerCase()];
+  var dir = dirOf(job.path);
+  var useTex = $("texSel").value === "on";
+  switch (job.ext){
+    case "obj":
+      return entry.getText().then(function(text){
+        var parsed = parseOBJ(text, dir, useTex);
+        var model = parsed.model;
+        var mtlP = parsed.mtlFiles.map(function(mf){
+          var e = mapLookup(mf, dir);
+          if (!e) return Promise.resolve();
+          return e.getText().then(function(mt){
+            var mats = applyMTL(model, mt, dir, useTex);
+            /* 按材质名把贴图/颜色补到对应网格：OBJ 的 mesh 名与材质顺序对应，
+               这里按 usemtl 顺序保存的名字匹配 */
+            model.meshes.forEach(function(mesh){
+              /* parseOBJ 用材质建网格，名字顺序与材质出现顺序一致时直接套用同名材质 */
+            });
+            /* 简单稳妥的做法：重新按名字查找——mesh.mat 已在 parse 时留空，
+               这里把第一个含贴图的材质给没有贴图的网格做兜底不做，避免贴错；
+               正确映射在 parseOBJ2 中完成（见下方说明）。 */
+            model._mats = mats;
+          }).catch(function(){});
+        });
+        return Promise.all(mtlP).then(function(){
+          return attachObjMaterials(model, text, dir, useTex);
+        });
+      });
+    case "stl":
+      return entry.getArrayBuffer().then(function(ab){ return parseSTL(ab); });
+    case "ply":
+      return entry.getArrayBuffer().then(function(ab){ return parsePLY(ab); });
+    case "glb":
+      return entry.getArrayBuffer().then(function(ab){ return parseGLB(ab); });
+    case "gltf":
+      return parseGLTFFile(entry, dir);
+    case "dae":
+      return entry.getText().then(function(t){ return parseDAE(t); });
+    case "fbx":
+      return entry.getArrayBuffer().then(function(ab){ return parseFBX(ab); });
+  }
+  return Promise.reject(new Error("不支持的格式"));
+}
+/* OBJ 材质精确映射：重新扫一遍 usemtl 顺序，给每个网格挂上材质与贴图 */
+function attachObjMaterials(model, text, dir, useTex){
+  var order = [];
+  text.split(/\r?\n/).forEach(function(l){
+    var m = /^\s*usemtl\s+(.+)$/.exec(l);
+    if (m && order.indexOf(m[1].trim()) < 0) order.push(m[1].trim());
+    var f = /^\s*f\s/.exec(l);
+    if (f && order.length === 0) order.push("__default");
+  });
+  if (!model._mats) return Promise.resolve(model);
+  var mats = model._mats;
+  var jobs2 = model.meshes.map(function(mesh, i){
+    var matName = order[Math.min(i, order.length-1)];
+    var mat = mats[matName];
+    if (!mat) return Promise.resolve();
+    mesh.mat.color = mat.color;
+    mesh.mat.opacity = mat.opacity;
+    if (useTex && mat.mapRef){
+      var e = mapLookup(mat.mapRef, dir);
+      if (e){
+        return e.getArrayBuffer().then(function(ab){
+          var ex = extOf(mat.mapRef);
+          mesh.mat.map = { data: new Uint8Array(ab), mime: ex === "png" ? "image/png" : "image/jpeg",
+                           ext: (ex === "png" || ex === "jpg" || ex === "jpeg") ? (ex === "jpeg" ? "jpg" : ex) : "png" };
+        }).catch(function(){});
+      }
+    }
+    return Promise.resolve();
+  });
+  return Promise.all(jobs2).then(function(){ return model; });
+}
+
+var converting = false;
+function convertAll(){
+  if (converting) return;
+  var todo = jobs.filter(function(j){ return j.status === "wait" || j.status === "fail"; });
+  if (!todo.length) return;
+  converting = true;
+  $("convertBtn").disabled = true;
+  $("prog").style.display = "block";
+  var done = 0;
+  var chain = Promise.resolve();
+  todo.forEach(function(job){
+    chain = chain.then(function(){
+      job.status = "working"; job.err = ""; render();
+      return yieldUI().then(function(){
+        if (job.ext === "usdz"){
+          var e = fileMap[job.path.toLowerCase()];
+          return e.getArrayBuffer().then(function(ab){
+            job.blob = new Blob([ab], { type: "model/vnd.usdz+zip" });
+            job.meta = "本来就是 USDZ，原样提供下载";
+          });
+        }
+        return loadModel(job).then(function(model){
+          model.meshes = model.meshes.filter(function(m){ return m.faces.length > 0; });
+          var faces = countFaces(model), verts = countVerts(model);
+          if (!faces) throw new Error("没解析出任何面，文件可能损坏或格式太特殊");
+          var opts = { height: $("heightSel").value, ground: $("groundSel").value === "on", useTex: $("texSel").value === "on" };
+          return buildUSDZ(model, opts).then(function(blob){
+            job.blob = blob;
+            job.meta = verts.toLocaleString() + " 个顶点 · " + faces.toLocaleString() + " 个面 · 成品 " + fmtSize(blob.size);
+          });
+        });
+      }).then(function(){
+        job.status = "done";
+        job.url = URL.createObjectURL(job.blob);
+      }).catch(function(err){
+        job.status = "fail";
+        job.err = (err && err.message) ? err.message : String(err);
+      }).then(function(){
+        done++;
+        $("progBar").style.width = Math.round(done/todo.length*100) + "%";
+        render();
+        return yieldUI();
+      });
+    });
+  });
+  chain.then(function(){
+    converting = false;
+    $("convertBtn").disabled = !jobs.some(function(j){ return j.status === "wait" || j.status === "fail"; });
+    render();
+  });
+}
+
+/* ============ 打包全部结果 ============ */
+function packAll(){
+  var doneJobs = jobs.filter(function(j){ return j.status === "done" && j.blob; });
+  if (!doneJobs.length) return;
+  $("packBtn").disabled = true;
+  $("summary").textContent = "正在打包 " + doneJobs.length + " 个 USDZ…";
+  var zip = new JSZip();
+  var used = {};
+  doneJobs.forEach(function(j){
+    var nm = j.outName, k = 2;
+    while (used[nm]) nm = stemOf(j.outName) + "_" + (k++) + ".usdz";
+    used[nm] = 1;
+    zip.file(nm, j.blob);
+  });
+  zip.generateAsync({ type: "blob" }).then(function(blob){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "USDZ模型合集.zip";
+    document.body.appendChild(a); a.click(); a.remove();
+    $("packBtn").disabled = false;
+    render();
+  });
+}
+
+/* ============ 界面渲染 ============ */
+function statusChip(job){
+  switch (job.status){
+    case "wait": return '<span class="st">待转换</span>';
+    case "ready": return '<span class="st done">已是 USDZ</span>';
+    case "working": return '<span class="st working">转换中…</span>';
+    case "done": return '<a class="dl" href="' + job.url + '" download="' + job.outName.replace(/"/g,"") + '">下载 USDZ</a>';
+    case "fail": return '<span class="st fail">失败</span>';
+  }
+  return "";
+}
+function render(){
+  var list = $("list");
+  list.innerHTML = "";
+  jobs.forEach(function(job){
+    var entry = fileMap[job.path.toLowerCase()];
+    var div = document.createElement("div");
+    div.className = "item";
+    var inner = '<div class="fmt">' + job.ext.toUpperCase() + '</div><div class="main">' +
+      '<div class="name">' + escapeHtml(job.name) + '</div>' +
+      '<div class="path">' + escapeHtml(job.path) + ' · ' + fmtSize(entry ? entry.size : 0) + '</div>';
+    if (job.meta) inner += '<div class="meta">' + escapeHtml(job.meta) + '</div>';
+    if (job.err) inner += '<div class="err">' + escapeHtml(job.err) + '</div>';
+    inner += '</div>' + statusChip(job);
+    div.innerHTML = inner;
+    list.appendChild(div);
+    if (job.status === "ready" && !job.url){
+      entry.getArrayBuffer().then(function(ab){
+        job.blob = new Blob([ab], { type: "model/vnd.usdz+zip" });
+        job.status = "done";
+        job.url = URL.createObjectURL(job.blob);
+        job.meta = "本来就是 USDZ，未做改动";
+        render();
+      });
+    }
+  });
+  var totalFiles = Object.keys(fileMap).length;
+  var doneN = jobs.filter(function(j){ return j.status === "done"; }).length;
+  if (!jobs.length && totalFiles){
+    $("summary").textContent = "解压出 " + totalFiles + " 个文件，但没找到模型文件（需要 .obj / .stl / .glb / .gltf / .fbx / .dae / .ply / .usdz）。";
+  } else if (jobs.length){
+    $("summary").textContent = "共找到 " + jobs.length + " 个模型" + (doneN ? "，已转好 " + doneN + " 个" : "") + "。";
+  }
+  $("convertBtn").disabled = converting || !jobs.some(function(j){ return j.status === "wait" || j.status === "fail"; });
+  $("convertBtn").textContent = jobs.some(function(j){ return j.status === "fail"; }) ? "重试失败的 / 开始转换" : "开始转换";
+  $("packBtn").disabled = doneN < 1;
+  $("clearBtn").disabled = !totalFiles;
+}
+function escapeHtml(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+/* ============ 事件 ============ */
+var drop = $("drop"), input = $("fileInput");
+drop.addEventListener("click", function(){ input.click(); });
+drop.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " "){ e.preventDefault(); input.click(); } });
+input.addEventListener("change", function(){
+  if (!input.files.length) return;
+  $("summary").textContent = "正在解压…";
+  ingestFiles(input.files).then(function(){
+    if (!jobs.length) render();
+  }).catch(function(err){
+    $("summary").textContent = "打开失败：" + err.message;
+  });
+  input.value = "";
+});
+["dragenter","dragover"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add("over"); });
+});
+["dragleave","drop"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove("over"); });
+});
+drop.addEventListener("drop", function(e){
+  var files = e.dataTransfer.files;
+  if (!files.length) return;
+  $("summary").textContent = "正在解压…";
+  ingestFiles(files).catch(function(err){ $("summary").textContent = "打开失败：" + err.message; });
+});
+$("convertBtn").addEventListener("click", convertAll);
+$("packBtn").addEventListener("click", packAll);
+$("clearBtn").addEventListener("click", function(){
+  jobs.forEach(function(j){ if (j.url) URL.revokeObjectURL(j.url); });
+  jobs = []; fileMap = {};
+  $("prog").style.display = "none";
+  $("progBar").style.width = "0";
+  $("summary").textContent = "还没选文件。";
+  render();
+});
+render();
+</script>
+</body>
+</html>
